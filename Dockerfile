@@ -13,18 +13,25 @@ COPY tsconfig.json ./
 COPY services/orchestration/package*.json ./services/orchestration/
 COPY services/orchestration/jest.config.js ./services/orchestration/
 COPY services/orchestration/tsconfig.json ./services/orchestration/
+COPY services/orchestration/prisma ./services/orchestration/prisma/
 COPY services/orchestration/src ./services/orchestration/src/
 COPY services/orchestration/__tests__ ./services/orchestration/__tests__/
-COPY services/orchestration/prisma ./services/orchestration/prisma/
+
+# ---------- BUILD ----------
+FROM base AS build
+
+ENV NODE_ENV=development
+
+RUN corepack enable \
+ && pnpm install --frozen-lockfile \
+ && pnpm run --filter orchestration build \
+ && pnpm prune --prod
 
 
 # ---------- DEV ----------
-FROM base AS dev
-ENV NODE_ENV=development
+FROM build AS dev
 
-USER root
-RUN corepack enable && pnpm install
-RUN chown -R node:node /usr/src/app
+ENV NODE_ENV=development
 
 USER node
 
@@ -33,25 +40,31 @@ EXPOSE 50051
 CMD ["pnpm", "--filter", "orchestration", "start"]
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
-  CMD nc -z localhost 50051 || exit 1
-
+  CMD curl -f http://localhost:9090/livez || exit 1
 
 # ---------- PROD ----------
-FROM base AS prod
+FROM node:22 AS prod
+
+WORKDIR /usr/src/app
+
 ENV NODE_ENV=production
 
-USER root
-RUN corepack enable \
- && pnpm install --frozen-lockfile \
- && pnpm run --filter orchestration build \
- && pnpm prune --prod \
- && chown -R node:node /usr/src/app
+
+#COPY --from=build /usr/src/app /usr/src/app
+
+COPY --from=build /usr/src/app/node_modules ./node_modules
+COPY --from=build /usr/src/app/package.json ./package.json
+COPY --from=build /usr/src/app/services/orchestration/dist ./services/orchestration/dist
+COPY --from=build /usr/src/app/shared/*/dist ./shared/*/dist
+COPY --from=build /usr/src/app/shared/*/package.json ./shared/*/package.json
+
+#COPY --from=build /usr/src/app/shared ./shared
 
 USER node
 
 EXPOSE 50051
 
-CMD ["node", "services/orchestration/dist/app.js"]
+CMD ["node", "dist/services/orchestration/src/app.js"]
 
-HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
-  CMD nc -z localhost 50051 || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:9090/livez || exit 1

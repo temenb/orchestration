@@ -12,12 +12,11 @@ COPY tsconfig.json ./
 COPY proto ./proto
 
 COPY services/orchestration/package*.json ./services/orchestration/
-COPY services/orchestration/prisma ./services/orchestration/prisma
 COPY services/orchestration/jest.config.js ./services/orchestration/
 COPY services/orchestration/tsconfig.json ./services/orchestration/
-COPY services/orchestration/prisma ./services/orchestration/prisma/
 COPY services/orchestration/src ./services/orchestration/src/
 COPY services/orchestration/__tests__ ./services/orchestration/__tests__/
+COPY services/orchestration/prisma ./services/orchestration/prisma/
 
 # ---------- BUILD ----------
 FROM base AS build
@@ -28,9 +27,14 @@ RUN apt-get update && apt-get install -y protobuf-compiler
 
 RUN corepack enable
 RUN pnpm install --frozen-lockfile
+RUN mkdir ./services/orchestration/src/grpc/generated -p
 RUN pnpm run --filter orchestration proto:generate
-RUN pnpm run --filter orchestration build
-RUN pnpm install --prod
+RUN pnpm --filter @shared/logger build
+RUN pnpm --filter @shared/grpc-client-manager build
+RUN pnpm --filter @shared/kafka-manager build
+RUN pnpm --filter @shared/pg-boss-manager buld
+RUN pnpm --filter orchestration build
+RUN pnpm prune --prod
 
 # ---------- DEV ----------
 FROM build AS dev
@@ -44,7 +48,7 @@ EXPOSE 50051
 CMD ["pnpm", "--filter", "orchestration", "start"]
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
-  CMD nc -z localhost 50051 || exit 1
+  CMD curl -f http://localhost:9090/livez || exit 1
 
 # ---------- PROD ----------
 FROM node:22 AS prod
@@ -69,5 +73,5 @@ EXPOSE 50051
 
 CMD ["node", "./services/orchestration/dist/app.js"]
 
-HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
-  CMD nc -z localhost 50051 || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:9090/livez || exit 1

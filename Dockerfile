@@ -12,6 +12,7 @@ COPY tsconfig.json ./
 COPY proto ./proto
 
 COPY services/orchestration/package*.json ./services/orchestration/
+COPY services/orchestration/prisma ./services/orchestration/prisma
 COPY services/orchestration/jest.config.js ./services/orchestration/
 COPY services/orchestration/tsconfig.json ./services/orchestration/
 COPY services/orchestration/prisma ./services/orchestration/prisma/

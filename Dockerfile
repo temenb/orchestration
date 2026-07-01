@@ -42,12 +42,20 @@ RUN pnpm prune --prod
 
 
 # ---------- PREDEPLOY ----------
-FROM build AS predeploy
+FROM node:22 AS predeploy
+
+WORKDIR /usr/src/app
+
+COPY pnpm-lock.yaml ./
+COPY package.json ./
+COPY pnpm-workspace.yaml ./
+COPY tsconfig.base.json ./
+COPY services/orchestration ./services/orchestration
+
+RUN corepack enable
+RUN pnpm install --frozen-lockfile --prod=false
 
 WORKDIR /usr/src/app/services/orchestration
-
-# prisma CLI нужен только тут
-RUN corepack enable
 
 CMD ["pnpm", "exec", "prisma", "migrate", "deploy", "--schema=prisma/schema.prisma"]
 
